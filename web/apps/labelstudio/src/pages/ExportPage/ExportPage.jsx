@@ -39,6 +39,7 @@ export const ExportPage = () => {
   const [downloadingMessage, setDownloadingMessage] = useState(false);
   const [availableFormats, setAvailableFormats] = useState([]);
   const [currentFormat, setCurrentFormat] = useState("JSON");
+  const [selectedCount, setSelectedCount] = useState(null);
 
   /** @type {import('react').RefObject<Form>} */
   const form = useRef();
@@ -123,6 +124,32 @@ export const ExportPage = () => {
     }
   }, [pageParams]);
 
+  // Update selected count from DataManager context when available
+  useEffect(() => {
+    try {
+      const dmRef = contextProps?.dmRef;
+      let selectedSnapshot = null;
+
+      if (dmRef && dmRef.store && dmRef.store.currentView) {
+        selectedSnapshot = dmRef.store.currentView.selected?.snapshot;
+      } else if (pageParams?.selectedItems) {
+        try {
+          selectedSnapshot = JSON.parse(decodeURIComponent(pageParams.selectedItems));
+        } catch (e) {
+          selectedSnapshot = null;
+        }
+      }
+
+      if (selectedSnapshot && selectedSnapshot.all === false && Array.isArray(selectedSnapshot.included)) {
+        setSelectedCount(selectedSnapshot.included.length);
+      } else {
+        setSelectedCount(null);
+      }
+    } catch (e) {
+      setSelectedCount(null);
+    }
+  }, [contextProps, pageParams]);
+
   return (
     <Modal
       onHide={() => {
@@ -156,7 +183,7 @@ export const ExportPage = () => {
               <Space>
                 {downloadingMessage && "Files are being prepared. It might take some time."}
                 <Button className="w-[135px]" onClick={proceedExport} waiting={downloading} aria-label="Export data">
-                  Export
+                  {selectedCount !== null ? `Export (${selectedCount})` : `Export`}
                 </Button>
               </Space>
             </Elem>
