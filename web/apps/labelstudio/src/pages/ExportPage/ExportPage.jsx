@@ -5,7 +5,7 @@ import { Form, Input } from "../../components/Form";
 import { Modal } from "../../components/Modal/Modal";
 import { Space } from "../../components/Space/Space";
 import { useAPI } from "../../providers/ApiProvider";
-import { useFixedLocation, useParams } from "../../providers/RoutesProvider";
+import { useFixedLocation, useParams, useContextComponent } from "../../providers/RoutesProvider";
 import { BemWithSpecificContext } from "../../utils/bem";
 import { isDefined } from "../../utils/helpers";
 import "./ExportPage.scss";
@@ -32,6 +32,7 @@ export const ExportPage = () => {
   const location = useFixedLocation();
   const pageParams = useParams();
   const api = useAPI();
+  const { ContextComponent, contextProps } = useContextComponent();
 
   const [previousExports, setPreviousExports] = useState([]);
   const [downloading, setDownloading] = useState(false);
@@ -54,6 +55,28 @@ export const ExportPage = () => {
       full: true,
       booleansAsNumbers: true,
     });
+
+    // Try to include Data Manager selection (ids[]) if available — otherwise do not modify default params
+    try {
+      const dmRef = contextProps?.dmRef;
+      let selectedSnapshot = null;
+
+      if (dmRef && dmRef.store && dmRef.store.currentView) {
+        selectedSnapshot = dmRef.store.currentView.selected?.snapshot;
+      } else if (pageParams?.selectedItems) {
+        try {
+          selectedSnapshot = JSON.parse(decodeURIComponent(pageParams.selectedItems));
+        } catch (e) {
+          selectedSnapshot = null;
+        }
+      }
+
+      if (selectedSnapshot && selectedSnapshot.all === false && Array.isArray(selectedSnapshot.included) && selectedSnapshot.included.length > 0) {
+        params['ids[]'] = selectedSnapshot.included.map((v) => Number(v));
+      }
+    } catch (e) {
+      console.warn('Could not read DM selection for export:', e);
+    }
 
     const response = await api.callApi("exportRaw", {
       params: {
