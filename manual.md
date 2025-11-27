@@ -23,7 +23,9 @@ cd .\web
 yarn install
 
 # Start dev server (NX/Yarn). These env vars are PowerShell-friendly examples used during development.
-$env:NODE_ENV = 'development'; $env:BUILD_NO_SERVER = 'true'; yarn ls:dev
+$env:NODE_ENV = 'development'; $env:BUILD_NO_SERVER = 'true'; yarn ls:dev #win version
+HOST=0.0.0.0 NODE_ENV=development BUILD_NO_SERVER=true yarn ls:dev nx run labelstudio:serve:development --host=0.0.0.0 #linux
+
 ```
 
 Notes:
