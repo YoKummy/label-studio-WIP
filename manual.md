@@ -48,9 +48,44 @@ python .\label_studio\manage.py runserver 0.0.0.0:8080
 python _wsgi.py --host 0.0.0.0 --port 9090 
 ```
 
-Notes:
-- Setting `HOT_RELOAD_CONFIG_FILE` in PowerShell before starting Django is the easiest way to make `/api/ml/config` work during local development when the ML backend constant points to a different path (e.g., a Linux path inside the ML backend package).
+2.a) Database migrations (safe steps)
+
+When you set up the backend or after pulling model/schema changes, run migrations.
+If you use SQLite locally, stop any background workers or other Django processes first to avoid
+"database is locked" errors.
+
+PowerShell commands (from repo root):
+
+```powershell
+# Optional: activate your venv
 - If you prefer to set this permanently, add `HOT_RELOAD_CONFIG_FILE` to your system environment variables or into Django settings (not recommended for temporary dev work).
+
+# Check unapplied migrations
+python .\label_studio\manage.py showmigrations
+python label_studio/manage.py showmigrations
+# Create new migrations if you changed models locally (usually not needed)
+python .\label_studio\manage.py makemigrations
+python label_studio/manage.py makemigrations
+# Apply migrations
+python .\label_studio\manage.py migrate
+python label_studio/manage.py migrate
+# Create superuser if needed
+python .\label_studio\manage.py createsuperuser
+
+# If you serve built frontend assets, collect static files
+python .\label_studio\manage.py collectstatic --noinput
+```
+
+Notes about SQLite and concurrency:
+- Stop RQ workers or any other processes that may write to the DB before running migrations.
+- If you keep getting "database is locked", try again after stopping other processes or
+  consider using a local Postgres instance for development with background workers.
+
+Now restart your server after migrations complete.
+
+```
+
+Notes:
 
 3) Test the API endpoints
 
@@ -102,3 +137,4 @@ Invoke-RestMethod http://localhost:8080/api/ml/resources
 - To observe hot-reload behavior for the ML backend, run the ML backend process (if separate) and trigger a model usage (prediction) — the ML backend logs show reloads when the config file changes.
 
 If anything in this manual doesn't work on your machine, paste the terminal output and any browser console logs and I'll help diagnose.
+

@@ -233,6 +233,9 @@
     "webpack-merge": "^5.9.0",
     "yargs": "^17.7.1"
   },
+  "devDependencies": {
+    "js-yaml": "3.14.1"
+  },
   "resolutions": {
     "@module-federation/dts-plugin": ">=0.18.0",
     "@radix-ui/react-slot": "1.2.3",
@@ -241,7 +244,7 @@
     "diff": ">=3.5.0",
     "esbuild": ">=0.25.5",
     "jpeg-js": "0.4.4",
-    "js-yaml": "4.1.1",
+    "js-yaml": "3.14.1",
     "koa": ">=3.0.3",
     "lodash": "4.17.21",
     "merge": "2.1.1",
