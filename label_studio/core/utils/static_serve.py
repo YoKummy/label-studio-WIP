@@ -56,6 +56,8 @@ def serve(request, path, document_root=None, show_indexes=False, manifest_asset_
         )
         if possible_asset.startswith(manifest_asset_prefix):
             possible_asset = possible_asset[len(manifest_asset_prefix) :]
+        # remove leading slash to avoid absolute path resolution on Windows
+        possible_asset = possible_asset.lstrip('/')
         fullpath = Path(safe_join(document_root, possible_asset))
     if not fullpath.exists():
         raise Http404(_('“%(path)s” does not exist') % {'path': fullpath})

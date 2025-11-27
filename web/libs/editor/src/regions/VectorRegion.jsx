@@ -58,7 +58,7 @@ const Model = types
     // There are two modes: transform and edit
     // transform -- user can transform the shape as a whole (rotate, translate, resize)
     // edit -- user works with individual points
-    transformMode: true,
+    transformMode: false,
   })
   .volatile(() => ({
     mouseOverStartPoint: false,
@@ -233,7 +233,7 @@ const Model = types
 
       _selectArea(additiveMode = false) {
         const annotation = self.annotation;
-        self.setTransformMode(true);
+        self.setTransformMode(false);
         if (!annotation) return;
 
         if (additiveMode) {
@@ -333,15 +333,6 @@ const Model = types
         });
       },
 
-      isHovered() {
-        const stage = self.groupRef.getStage();
-        const pointer = stage.getPointerPosition();
-
-        // Convert to pixel coords in the canvas backing the image
-        const { x, y } = self.parent?.layerZoomScalePosition ?? { x: 0, y: 0 };
-        return self.vectorRef.isPointOverShape(pointer.x, pointer.y);
-      },
-
       // Checks is the region is being transformed or at least in
       // transformable state (has at least 2 points selected)
       isTransforming() {
@@ -413,7 +404,7 @@ const Model = types
           });
         }
 
-        if (!self.annotation.sentUserGenerate && self.coordstype === "perc") {
+        if (self.annotation && !self.annotation.sentUserGenerate && self.coordstype === "perc") {
           self.vertices.forEach((p) => {
             const x = (sw * p.x) / RELATIVE_STAGE_WIDTH;
             const y = (sh * p.y) / RELATIVE_STAGE_HEIGHT;
@@ -436,6 +427,43 @@ const Model = types
 
       setKonvaVectorRef(ref) {
         self.vectorRef = ref;
+      },
+
+      /**
+       * Override selectRegion to reset transform mode when selecting from sidebar
+       * This ensures transform mode is reset whether selecting by clicking on the shape
+       * or selecting from the sidebar/outliner
+       */
+      selectRegion() {
+        // Reset transform mode when region is selected (from sidebar or elsewhere)
+        self.setTransformMode(false);
+        // Call parent selectRegion to handle scrolling
+        self.scrollToRegion();
+      },
+
+      addPoint(x, y) {
+        const image = self.parent.currentImageEntity;
+        const width = image.naturalWidth;
+        const height = image.naturalHeight;
+
+        const realX = (x / 100) * width;
+        const realY = (y / 100) * height;
+
+        if (!self.vectorRef) {
+          return;
+        }
+        if (self.closed) {
+          return;
+        }
+
+        // Use KonvaVector's programmatic point creation methods
+        // Start a point, then immediately commit it to create a regular point
+        const startResult = self.vectorRef.startPoint(realX, realY);
+        if (startResult) {
+          const commitResult = self.vectorRef.commitPoint(realX, realY);
+          return commitResult;
+        }
+        return null;
       },
 
       // Uses KonvaVector startPoint to start drawing
@@ -469,7 +497,7 @@ const Model = types
           const annotation = self.parent?.annotation;
           annotation?.toggleRegionSelection(self);
         }
-        tool?.complete();
+        tool?.complete?.();
       },
       toggleTransformMode() {
         self.setTransformMode(!self.transformMode);
@@ -497,6 +525,49 @@ const Model = types
           console.error("📊 commitMultiRegionTransform method not available");
         }
       },
+
+      /**
+       * Override deleteRegion to handle selected points deletion
+       * If points are selected (but not all), delete only those points
+       * If all points are selected or none, delete the entire region
+       * If region is part of multi-selection, always delete the entire region
+       */
+      deleteRegion() {
+        // Check if this region is part of multi-selection
+        // If so, always delete the entire region (don't check for selected points)
+        const isMultiRegionSelected = self.object?.selectedRegions?.length > 1;
+
+        if (!isMultiRegionSelected) {
+          // Only check for selected points if NOT part of multi-selection
+          // Check if we have selected points and if vectorRef is available
+          if (self.vectorRef && typeof self.vectorRef.getSelectedPointIds === "function") {
+            const selectedPointIds = self.vectorRef.getSelectedPointIds();
+            const totalPoints = self.vertices.length;
+
+            // If we have selected points AND not all points are selected, delete only those points
+            if (selectedPointIds.length > 0 && selectedPointIds.length < totalPoints) {
+              // Delete only the selected points
+              if (typeof self.vectorRef.deletePointsByIds === "function") {
+                self.vectorRef.deletePointsByIds(selectedPointIds);
+                return; // Don't delete the entire region
+              }
+            }
+            // Otherwise, fall through to delete the entire region
+          }
+        }
+
+        // Delete the entire region (original behavior)
+        // Call parent deleteRegion from KonvaRegionMixin
+        const selectedTool = self.parent?.getToolsManager().findSelectedTool();
+        selectedTool?.enable?.();
+        // Call the parent deleteRegion which eventually calls annotation.deleteRegion(self)
+        // We need to call it through the mixin chain
+        if (self.annotation.isReadOnly()) return;
+        if (self.isReadOnly()) return;
+        if (self.selected) self.annotation.unselectAll(true);
+        if (self.destroyRegion) self.destroyRegion();
+        self.annotation.deleteRegion(self);
+      },
     };
   });
 
@@ -522,25 +593,42 @@ const HtxVectorView = observer(({ item, suggestion }) => {
   const stageHeight = image?.naturalHeight ?? 0;
   const { x: offsetX, y: offsetY } = item.parent?.layerZoomScalePosition ?? { x: 0, y: 0 };
   const disabled = item.disabled || suggestion || store.annotationStore.selected.isLinkingMode;
+  const selected = !disabled; // Invert disabled to selected for KonvaVector
+  const isDisabled = item.locked; // Completely disable all interactions when locked
 
   // Wait for stage to be properly initialized
   if (!item.parent?.stageWidth || !item.parent?.stageHeight) {
     return null;
   }
 
+  // Check if move tool is selected (disable ghost line when move tool is active)
+  const selectedTool = item.parent?.getToolsManager()?.findSelectedTool();
+  const disableGhostLine = selectedTool?.fullName === "MoveTool";
+
   return (
     <RegionWrapper item={item}>
-      <Group ref={(ref) => item.segGroupRef(ref)} name={item.id}>
+      <Group ref={(ref) => item.segGroupRef(ref)} name={item.id} visible={!item.hidden}>
         <KonvaVector
           ref={(kv) => item.setKonvaVectorRef(kv)}
           initialPoints={Array.from(item.vertices)}
           isMultiRegionSelected={item.object?.selectedRegions?.length > 1}
+          disableGhostLine={disableGhostLine}
           onFinish={(e) => {
+            console.log("on finish");
+            if (disabled) return;
             e.evt.stopPropagation();
             e.evt.preventDefault();
             item.handleFinish();
           }}
+          onTransformStart={() => {
+            item.parent.annotation.history.freeze();
+          }}
           onTransformEnd={(e) => {
+            item.parent.annotation.history.unfreeze();
+
+            // Handle case where event might be undefined (e.g., from onTransformationEnd)
+            if (!e || !e.target || !e.currentTarget) return;
+
             if (e.target !== e.currentTarget) return;
 
             const t = e.target;
@@ -624,10 +712,25 @@ const HtxVectorView = observer(({ item, suggestion }) => {
           onPathClosedChange={(isClosed) => {
             item.onPathClosedChange(isClosed);
           }}
+          onGhostPointClick={(ghostPoint) => {
+            // Only handle if we're drawing
+            if (!item.isDrawing) {
+              return;
+            }
+
+            if (item.vectorRef) {
+              // Start and immediately commit to insert the point at ghost location
+              const startResult = item.vectorRef.startPoint(ghostPoint.x, ghostPoint.y);
+              if (startResult) {
+                item.vectorRef.commitPoint(ghostPoint.x, ghostPoint.y);
+              }
+            }
+          }}
           onClick={(e) => {
             if (e.evt.defaultPrevented) {
               return;
             }
+
             // Handle region selection
             if (item.isReadOnly()) return;
             if (item.parent.getSkipInteractions()) return;
@@ -663,7 +766,6 @@ const HtxVectorView = observer(({ item, suggestion }) => {
             e.evt.preventDefault();
             item.toggleTransformMode();
           }}
-          transformMode={!disabled && item.transformMode}
           closed={item.closed}
           width={stageWidth}
           height={stageHeight}
@@ -671,6 +773,7 @@ const HtxVectorView = observer(({ item, suggestion }) => {
           scaleY={item.parent.stageZoom}
           x={0}
           y={0}
+          transformMode={item.selected && item.transformMode && !isDisabled}
           transform={{ zoom: item.parent.stageZoom, offsetX, offsetY }}
           fitScale={item.parent.zoomScale}
           allowClose={item.control?.closable ?? false}
@@ -679,17 +782,19 @@ const HtxVectorView = observer(({ item, suggestion }) => {
           maxPoints={item.maxPoints}
           skeletonEnabled={item.control?.skeleton ?? false}
           stroke={item.selected ? "#ff0000" : regionStyles.strokeColor}
-          fill={item.selected ? "rgba(255, 0, 0, 0.3)" : regionStyles.fillColor}
+          fill={regionStyles.fillColor}
           strokeWidth={regionStyles.strokeWidth}
           opacity={Number.parseFloat(item.control?.opacity || "1")}
           pixelSnapping={item.control?.snap === "pixel"}
-          disabled={disabled}
+          selected={selected}
+          disabled={isDisabled}
           // Point styling - customize point appearance based on control settings
           pointRadius={item.pointRadiusFromSize}
           pointFill={item.selected ? "#ffffff" : "#f8fafc"}
           pointStroke={item.selected ? "#ff0000" : regionStyles.strokeColor}
           pointStrokeSelected="#ff6b35"
           pointStrokeWidth={item.selected ? 2 : 1}
+          disableInternalPointAddition={true}
         />
 
         {item.vertices.length > 0 && (
