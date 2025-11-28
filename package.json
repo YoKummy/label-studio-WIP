@@ -1,5 +1,9 @@
 {
   "devDependencies": {
-    "tailwindcss-animate": "^1.0.7"
+    "tailwindcss-animate": "^1.0.7",
+    "js-yaml": "3.14.1"
+  },
+  "resolutions": {
+    "js-yaml": "3.14.1"
   }
 }
