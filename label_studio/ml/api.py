@@ -16,6 +16,8 @@ from rest_framework import generics, status
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
+import os
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -484,3 +486,178 @@ class MLBackendVersionsAPI(generics.RetrieveAPIView):
             result = {'error': str(versions_response.error_message)}
             status_code = versions_response.status_code if versions_response.status_code > 0 else 500
             return Response(data=result, status=status_code)
+
+
+@method_decorator(
+    name='get',
+    decorator=extend_schema(
+        tags=['Machine Learning'],
+        summary='Get hot-reload ML config',
+        description='Return current ML hot-reload config from the ML backend config file.',
+    ),
+)
+@method_decorator(
+    name='post',
+    decorator=extend_schema(
+        tags=['Machine Learning'],
+        summary='Update hot-reload ML config',
+        description='Update ML hot-reload config file with provided values (model_path, conf, version, labels).',
+        request={
+            'application/json': {
+                'type': 'object',
+                'properties': {
+                    'model_path': {'type': 'string'},
+                    'conf': {'type': 'number'},
+                    'version': {'type': 'string'},
+                    'labels': {'type': 'object'},
+                },
+            }
+        },
+    ),
+)
+class MLHotReloadConfigAPI(APIView):
+    permission_required = all_permissions.projects_change
+
+    def _config_path_from_backend(self):
+        # Try to locate HOT_RELOAD_CONFIG_FILE from known ml backend modules
+        candidates = [
+            'label_studio_ml.defv2.model',
+            'label_studio_ml.model',
+        ]
+        for mod_name in candidates:
+            try:
+                from importlib import import_module
+
+                mod = import_module(mod_name)
+                config_path = getattr(mod, 'HOT_RELOAD_CONFIG_FILE', None)
+                if config_path:
+                    return config_path
+            except Exception:
+                continue
+
+        # Fallback: try environment or django settings
+        config_env = os.environ.get('HOT_RELOAD_CONFIG_FILE')
+        if config_env:
+            return config_env
+
+        return getattr(settings, 'HOT_RELOAD_CONFIG_FILE', None)
+
+    def _resolve_config_file(self, request, payload_config_file=None):
+        """Resolve config file path from query param, payload or backend defaults.
+
+        Priority: query param `config_file` > payload `config_file` > known backend constant/env/settings
+        Returns absolute path or None.
+        """
+        # prefer explicit query param
+        q = request.query_params.get('config_file') if hasattr(request, 'query_params') else None
+        if q:
+            return os.path.abspath(q)
+
+        # next prefer payload value passed from POST body
+        if payload_config_file:
+            return os.path.abspath(payload_config_file)
+
+        # last, fallback to backend-discovered path
+        return self._config_path_from_backend()
+
+    def get(self, request, *args, **kwargs):
+        config_file = self._resolve_config_file(request)
+        if not config_file:
+            return Response({'error': 'HOT_RELOAD_CONFIG_FILE not found'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        try:
+            with open(config_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception as e:
+            return Response({'error': f'Failed to read config: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        # return both config contents and the resolved path for the frontend UI
+        return Response({'config': data, 'config_file': config_file}, status=status.HTTP_200_OK)
+
+    def post(self, request, *args, **kwargs):
+        payload = request.data
+        # allow passing config_file in payload to select which file to update
+        payload_config_file = payload.get('config_file') if isinstance(payload, dict) else None
+        allowed_keys = {'model_path', 'conf', 'version', 'labels'}
+        data = {k: v for k, v in payload.items() if k in allowed_keys}
+
+        if 'conf' in data:
+            try:
+                conf = float(data['conf'])
+                if conf < 0.0 or conf > 1.0:
+                    return Response({'error': 'conf must be between 0 and 1'}, status=status.HTTP_400_BAD_REQUEST)
+                data['conf'] = conf
+            except Exception:
+                return Response({'error': 'conf must be a number'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if 'model_path' in data:
+            model_path = data['model_path']
+            if not os.path.isabs(model_path):
+                model_path = os.path.abspath(model_path)
+                data['model_path'] = model_path
+            if not os.path.exists(model_path):
+                return Response({'error': f'model_path does not exist: {model_path}'}, status=status.HTTP_400_BAD_REQUEST)
+
+        config_file = self._resolve_config_file(request, payload_config_file=payload_config_file)
+        if not config_file:
+            return Response({'error': 'HOT_RELOAD_CONFIG_FILE not found'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # Ensure config_file is absolute path
+        config_file = os.path.abspath(config_file)
+
+        # Basic permission/validations: parent dir must exist
+        parent = os.path.dirname(config_file)
+        if not os.path.isdir(parent):
+            return Response({'error': f'Config parent directory does not exist: {parent}'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            if os.path.exists(config_file):
+                with open(config_file, 'r', encoding='utf-8') as f:
+                    current = json.load(f)
+            else:
+                current = {}
+        except Exception as e:
+            return Response({'error': f'Failed to read existing config: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        current.update(data)
+        try:
+            with open(config_file, 'w', encoding='utf-8') as f:
+                json.dump(current, f, indent=2)
+        except Exception as e:
+            return Response({'error': f'Failed to write config: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return Response({'status': 'ok', 'config': current}, status=status.HTTP_200_OK)
+
+
+class MLResourcesAPI(APIView):
+    permission_required = all_permissions.projects_view
+
+    def get(self, request, *args, **kwargs):
+        """Return GPU info using nvidia-smi if available."""
+        try:
+            import subprocess
+
+            cmd = ["nvidia-smi", "--query-gpu=index,name,memory.total,memory.used,utilization.gpu,temperature.gpu", "--format=csv,noheader,nounits"]
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=5)
+            if proc.returncode != 0:
+                return Response({'error': 'nvidia-smi failed', 'detail': proc.stderr.strip()}, status=status.HTTP_200_OK)
+
+            gpus = []
+            for line in proc.stdout.strip().splitlines():
+                parts = [p.strip() for p in line.split(',')]
+                if len(parts) >= 6:
+                    idx, name, mem_total, mem_used, util, temp = parts[:6]
+                    gpus.append({
+                        'index': int(idx),
+                        'name': name,
+                        'memory_total_mb': float(mem_total),
+                        'memory_used_mb': float(mem_used),
+                        'utilization_percent': float(util),
+                        'temperature_c': float(temp),
+                    })
+
+            return Response({'gpus': gpus}, status=status.HTTP_200_OK)
+        except FileNotFoundError:
+            return Response({'error': 'nvidia-smi not found on server'}, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.exception('Failed to query GPU status')
+            return Response({'error': f'Failed to query GPU status: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

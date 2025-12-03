@@ -5,7 +5,7 @@ import { Form, Input } from "../../components/Form";
 import { Modal } from "../../components/Modal/Modal";
 import { Space } from "../../components/Space/Space";
 import { useAPI } from "../../providers/ApiProvider";
-import { useFixedLocation, useParams } from "../../providers/RoutesProvider";
+import { useFixedLocation, useParams, useContextComponent } from "../../providers/RoutesProvider";
 import { BemWithSpecificContext } from "../../utils/bem";
 import { isDefined } from "../../utils/helpers";
 import "./ExportPage.scss";
@@ -32,12 +32,14 @@ export const ExportPage = () => {
   const location = useFixedLocation();
   const pageParams = useParams();
   const api = useAPI();
+  const { ContextComponent, contextProps } = useContextComponent();
 
   const [previousExports, setPreviousExports] = useState([]);
   const [downloading, setDownloading] = useState(false);
   const [downloadingMessage, setDownloadingMessage] = useState(false);
   const [availableFormats, setAvailableFormats] = useState([]);
   const [currentFormat, setCurrentFormat] = useState("JSON");
+  const [selectedCount, setSelectedCount] = useState(null);
 
   /** @type {import('react').RefObject<Form>} */
   const form = useRef();
@@ -54,6 +56,28 @@ export const ExportPage = () => {
       full: true,
       booleansAsNumbers: true,
     });
+
+    // Try to include Data Manager selection (ids[]) if available — otherwise do not modify default params
+    try {
+      const dmRef = contextProps?.dmRef;
+      let selectedSnapshot = null;
+
+      if (dmRef && dmRef.store && dmRef.store.currentView) {
+        selectedSnapshot = dmRef.store.currentView.selected?.snapshot;
+      } else if (pageParams?.selectedItems) {
+        try {
+          selectedSnapshot = JSON.parse(decodeURIComponent(pageParams.selectedItems));
+        } catch (e) {
+          selectedSnapshot = null;
+        }
+      }
+
+      if (selectedSnapshot && selectedSnapshot.all === false && Array.isArray(selectedSnapshot.included) && selectedSnapshot.included.length > 0) {
+        params['ids[]'] = selectedSnapshot.included.map((v) => Number(v));
+      }
+    } catch (e) {
+      console.warn('Could not read DM selection for export:', e);
+    }
 
     const response = await api.callApi("exportRaw", {
       params: {
@@ -100,6 +124,32 @@ export const ExportPage = () => {
     }
   }, [pageParams]);
 
+  // Update selected count from DataManager context when available
+  useEffect(() => {
+    try {
+      const dmRef = contextProps?.dmRef;
+      let selectedSnapshot = null;
+
+      if (dmRef && dmRef.store && dmRef.store.currentView) {
+        selectedSnapshot = dmRef.store.currentView.selected?.snapshot;
+      } else if (pageParams?.selectedItems) {
+        try {
+          selectedSnapshot = JSON.parse(decodeURIComponent(pageParams.selectedItems));
+        } catch (e) {
+          selectedSnapshot = null;
+        }
+      }
+
+      if (selectedSnapshot && selectedSnapshot.all === false && Array.isArray(selectedSnapshot.included)) {
+        setSelectedCount(selectedSnapshot.included.length);
+      } else {
+        setSelectedCount(null);
+      }
+    } catch (e) {
+      setSelectedCount(null);
+    }
+  }, [contextProps, pageParams]);
+
   return (
     <Modal
       onHide={() => {
@@ -133,7 +183,7 @@ export const ExportPage = () => {
               <Space>
                 {downloadingMessage && "Files are being prepared. It might take some time."}
                 <Button className="w-[135px]" onClick={proceedExport} waiting={downloading} aria-label="Export data">
-                  Export
+                  {selectedCount !== null ? `Export (${selectedCount})` : `Export`}
                 </Button>
               </Space>
             </Elem>
