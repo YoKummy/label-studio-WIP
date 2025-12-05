@@ -84,3 +84,4 @@ docker-compose.override.yml
 CLAUDE.local.md
 web/libs/editor/tests/coverage
 .cache
+cache.db
