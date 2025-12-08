@@ -143,27 +143,31 @@ export default function MLConfigPanel(){
   return (
     <div className="p-base">
       {error && <div className="text-red-600 mb-tight">{error}</div>}
-      <div className="mb-base">
-        <Label text="Config File Path" />
-        <Input value={configFile||''} onChange={(e)=>onConfigFileChange(e)} placeholder="/path/to/config.json" />
+      <div className="flex gap-4">
+        <div className="flex-1">
+          <div className="mb-base">
+            <Label text="Config File Path" />
+            <Input value={configFile||''} onChange={(e)=>onConfigFileChange(e)} placeholder="/path/to/config.json" />
+          </div>
+          <div className="mb-base">
+            <Label text="Model Path" />
+            <Input value={config.model_path||''} onChange={onChange('model_path')} placeholder="/path/to/model.pt" />
+          </div>
+          <div className="mb-base">
+            <Label text="Confidence Threshold" />
+            <Input value={config.conf} type="number" step="0.01" min="0" max="1" onChange={onChange('conf')} />
+          </div>
+          <div className="mb-base">
+            <Label text="Model Version" />
+            <Input value={config.version||''} onChange={onChange('version')} />
+          </div>
+        </div>
+        <div className="flex-1 flex flex-col">
+          <Label text="Labels (JSON)" />
+          <TextArea value={labelsText} onChange={onLabelsChange} className="h-full" style={{minHeight: '200px'}} />
+        </div>
       </div>
-      <div className="mb-base">
-        <Label text="Model Path" />
-        <Input value={config.model_path||''} onChange={onChange('model_path')} placeholder="/path/to/model.pt" />
-      </div>
-      <div className="mb-base">
-        <Label text="Confidence Threshold" />
-        <Input value={config.conf} type="number" step="0.01" min="0" max="1" onChange={onChange('conf')} />
-      </div>
-      <div className="mb-base">
-        <Label text="Model Version" />
-        <Input value={config.version||''} onChange={onChange('version')} />
-      </div>
-      <div className="mb-base">
-        <Label text="Labels (JSON)" />
-        <TextArea value={labelsText} onChange={onLabelsChange} />
-      </div>
-      <div className="flex gap-2">
+      <div className="flex gap-2 mt-base">
         <Button variant="primary" look="filled" onClick={apply} disabled={saving}>
           {saving ? 'Applying...' : 'Apply'}
         </Button>
