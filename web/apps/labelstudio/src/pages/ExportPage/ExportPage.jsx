@@ -129,9 +129,11 @@ export const ExportPage = () => {
     try {
       const dmRef = contextProps?.dmRef;
       let selectedSnapshot = null;
+      let totalSelectedCount = null;
 
       if (dmRef && dmRef.store && dmRef.store.currentView) {
         selectedSnapshot = dmRef.store.currentView.selected?.snapshot;
+        totalSelectedCount = dmRef.store.currentView.selectedCount;
       } else if (pageParams?.selectedItems) {
         try {
           selectedSnapshot = JSON.parse(decodeURIComponent(pageParams.selectedItems));
@@ -140,7 +142,9 @@ export const ExportPage = () => {
         }
       }
 
-      if (selectedSnapshot && selectedSnapshot.all === false && Array.isArray(selectedSnapshot.included)) {
+      if (totalSelectedCount !== null && totalSelectedCount !== undefined) {
+        setSelectedCount(totalSelectedCount);
+      } else if (selectedSnapshot && selectedSnapshot.all === false && Array.isArray(selectedSnapshot.included)) {
         setSelectedCount(selectedSnapshot.included.length);
       } else {
         setSelectedCount(null);
