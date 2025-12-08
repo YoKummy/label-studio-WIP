@@ -94,7 +94,7 @@ export const MachineLearningSettings = () => {
 
     const showMLConfigModal = useCallback(() => {
       const modalProps = {
-        title: "Configure ML Hot-Reload",
+        title: "Configure ML Backend",
         style: { width: 760 },
         closeOnClickOutside: true,
         body: <MLConfigPanel />,
@@ -164,7 +164,7 @@ export const MachineLearningSettings = () => {
 
         <div className="mt-base">
           <Button variant="secondary" look="outlined" onClick={showMLConfigModal} aria-label="Open ML config">
-            Configure Hot-Reload Model
+            Configure ML backend
           </Button>
           <Button variant="secondary" look="outlined" onClick={() => {
             modalFactory({ title: 'Resources', style: { width: 760 }, closeOnClickOutside: true, body: <MLResourcesPanel /> })
