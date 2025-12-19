@@ -1,4 +1,5 @@
-import { types } from "mobx-state-tree";
+import { types, getRoot } from "mobx-state-tree";
+import { message } from "antd";
 
 import BaseTool, { DEFAULT_DIMENSIONS } from "./Base";
 import ToolMixin from "../mixins/Tool";
@@ -93,7 +94,101 @@ const _BaseNPointTool = types
         }
 
         // Use the parent commitDrawingRegion to finalize the region
-        return Super.commitDrawingRegion();
+        const region = Super.commitDrawingRegion();
+
+        if (region) {
+          try {
+            // Try to get settings from the object's root, as the tool might be detached
+            const root = getRoot(obj);
+            const settings = root.settings;
+            
+            // Debug logging
+            console.log("Rect Tool: Region created", region);
+            console.log("Rect Tool: Settings available", !!settings);
+            if (settings) {
+                console.log("Rect Tool: Template Assist Enabled?", settings.enableTemplateAssist);
+            }
+
+            if (settings && settings.enableTemplateAssist) {
+              self.requestSuggestions(region);
+            }
+          } catch (e) {
+            console.error("Rect Tool: Error checking settings", e);
+          }
+        }
+
+        return region;
+      },
+
+      requestSuggestions(region) {
+        const image = self.obj;
+        // In some versions of Label Studio, the image source is in 'src' or 'currentSrc'
+        // or inside an 'imageEntity' or 'currentImageEntity'
+        
+        let imageUrl = image.src;
+        
+        if (!imageUrl && image.currentImageEntity) {
+            imageUrl = image.currentImageEntity.src;
+        }
+
+        if (!imageUrl) {
+            console.warn("Rect Tool: No image source found on object", image);
+            return;
+        }
+
+        console.log("Rect Tool: Requesting suggestions for", imageUrl);
+
+        const bbox = {
+          x: region.x,
+          y: region.y,
+          width: region.width,
+          height: region.height,
+        };
+
+        const hideLoading = message.loading("Searching for similar objects...", 0);
+
+        fetch("http://localhost:9090/suggest", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            image_url: imageUrl,
+            bbox: bbox,
+          }),
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            hideLoading();
+            if (data.suggestions && data.suggestions.length > 0) {
+              message.success(`Found ${data.suggestions.length} similar objects`);
+              self.addSuggestions(data.suggestions);
+            } else {
+              message.info("No similar objects found");
+            }
+          })
+          .catch((err) => {
+            hideLoading();
+            console.error("Error fetching suggestions:", err);
+            message.error("Error searching for objects");
+          });
+      },
+
+      addSuggestions(suggestions) {
+        const { annotation, control, obj } = self;
+
+        suggestions.forEach((s) => {
+          const value = {
+            x: s.x,
+            y: s.y,
+            width: s.width,
+            height: s.height,
+            rotation: 0,
+          };
+
+          const resultValue = control.getResultValue();
+          annotation.createResult(value, resultValue, control, obj);
+        });
       },
     };
   });

@@ -1,4 +1,13 @@
 export default {
+  enableTemplateAssist: {
+    newUI: {
+      title: "Template Assist",
+      description: "Auto-suggest similar objects after labeling the first one",
+    },
+    description: "Enable Template Assist",
+    onChangeEvent: "toggleTemplateAssist",
+    defaultValue: false,
+  },
   enableHotkeys: {
     newUI: {
       title: "Labeling hotkeys",

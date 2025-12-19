@@ -26,6 +26,8 @@ const SettingsModel = types
 
     enableLabelTooltips: types.optional(types.boolean, true),
 
+    enableTemplateAssist: types.optional(types.boolean, false),
+
     /**
      * Keep label selected after creating a region
      */
@@ -145,6 +147,10 @@ const SettingsModel = types
       if (annotation) {
         annotation.updateAppearenceFromState();
       }
+    },
+
+    toggleTemplateAssist() {
+      self.enableTemplateAssist = !self.enableTemplateAssist;
     },
 
     toggleShowLineNumbers() {
