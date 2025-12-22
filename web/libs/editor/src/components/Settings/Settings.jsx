@@ -104,22 +104,49 @@ const GeneralSettings = observer(({ store }) => {
                     {EditorSettings[obj].newUI.description}
                   </div>
                 </div>
-                <Toggle
-                  key={index}
-                  checked={store.settings[obj]}
-                  onChange={store.settings[EditorSettings[obj].onChangeEvent]}
-                  description={EditorSettings[obj].description}
-                />
+                {EditorSettings[obj].type === "number" ? (
+                  <input
+                    type="number"
+                    value={store.settings[obj]}
+                    min={EditorSettings[obj].min}
+                    max={EditorSettings[obj].max}
+                    step={EditorSettings[obj].step}
+                    onChange={(e) => store.settings[EditorSettings[obj].onChangeEvent](parseFloat(e.target.value))}
+                    style={{ width: "60px", marginLeft: "10px" }}
+                  />
+                ) : (
+                  <Toggle
+                    key={index}
+                    checked={store.settings[obj]}
+                    onChange={store.settings[EditorSettings[obj].onChangeEvent]}
+                    description={EditorSettings[obj].description}
+                  />
+                )}
               </>
             ) : (
               <>
-                <Checkbox
-                  key={index}
-                  checked={store.settings[obj]}
-                  onChange={store.settings[EditorSettings[obj].onChangeEvent]}
-                >
-                  {EditorSettings[obj].description}
-                </Checkbox>
+                {EditorSettings[obj].type === "number" ? (
+                  <div style={{ display: "flex", alignItems: "center" }}>
+                    <span style={{ marginRight: "10px" }}>{EditorSettings[obj].description}</span>
+                    <input
+                      type="number"
+                      value={store.settings[obj]}
+                      min={EditorSettings[obj].min}
+                      max={EditorSettings[obj].max}
+                      step={EditorSettings[obj].step}
+                      onChange={(e) => store.settings[EditorSettings[obj].onChangeEvent](parseFloat(e.target.value))}
+                      style={{ width: "60px" }}
+                    />
+                  </div>
+                ) : (
+                  <Checkbox
+                    key={index}
+                    checked={store.settings[obj]}
+                    onChange={store.settings[EditorSettings[obj].onChangeEvent]}
+                  >
+                    {EditorSettings[obj].description}
+                  </Checkbox>
+                )}
                 <br />
               </>
             )}

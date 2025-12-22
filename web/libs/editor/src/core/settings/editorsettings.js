@@ -8,6 +8,19 @@ export default {
     onChangeEvent: "toggleTemplateAssist",
     defaultValue: false,
   },
+  templateAssistThreshold: {
+    newUI: {
+      title: "Template Assist Threshold",
+      description: "Confidence threshold for template matching (0.0 - 1.0)",
+    },
+    description: "Template Assist Threshold",
+    onChangeEvent: "setTemplateAssistThreshold",
+    defaultValue: 0.7,
+    type: "number",
+    min: 0,
+    max: 1,
+    step: 0.1,
+  },
   enableHotkeys: {
     newUI: {
       title: "Labeling hotkeys",

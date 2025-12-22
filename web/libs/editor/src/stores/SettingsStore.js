@@ -27,6 +27,7 @@ const SettingsModel = types
     enableLabelTooltips: types.optional(types.boolean, true),
 
     enableTemplateAssist: types.optional(types.boolean, false),
+    templateAssistThreshold: types.optional(types.number, 0.7),
 
     /**
      * Keep label selected after creating a region
@@ -151,6 +152,10 @@ const SettingsModel = types
 
     toggleTemplateAssist() {
       self.enableTemplateAssist = !self.enableTemplateAssist;
+    },
+
+    setTemplateAssistThreshold(value) {
+      self.templateAssistThreshold = value;
     },
 
     toggleShowLineNumbers() {

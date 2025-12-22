@@ -145,6 +145,9 @@ const _BaseNPointTool = types
           height: region.height,
         };
 
+        const root = getRoot(self.obj);
+        const threshold = root.settings.templateAssistThreshold || 0.7;
+
         const hideLoading = message.loading("Searching for similar objects...", 0);
 
         fetch("http://localhost:9090/suggest", {
@@ -155,6 +158,7 @@ const _BaseNPointTool = types
           body: JSON.stringify({
             image_url: imageUrl,
             bbox: bbox,
+            threshold: threshold,
           }),
         })
           .then((response) => response.json())
